@@ -765,7 +765,7 @@ protected:
 
             PXR_NS::UsdPrim effectorsPrim = m_stage->GetPrimAtPath(effectorsPath);
             if (!effectorsPrim) {
-                printf("Failed to get effectors prim.\n");
+                printf("Skipping effector attribute connections for actor '%s': no effectors component found.\n", actorPath.GetText());
                 continue;
             }
 
