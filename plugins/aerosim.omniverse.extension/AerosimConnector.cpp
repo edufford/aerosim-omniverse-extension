@@ -603,7 +603,7 @@ protected:
 
                 auto effectorActorPrim = m_stage->GetPrimAtPath(effectorActorPath);
                 if (!effectorActorPrim) {
-                    printf("Failed to get effector actor prim.\n");
+                    printf("Failed to get effector actor prim at path: %s\n", combinedPath.c_str());
                     continue;
                 }
 
@@ -785,7 +785,7 @@ protected:
 
                 auto effectorActorPrim = m_stage->GetPrimAtPath(effectorActorPath);
                 if (!effectorActorPrim) {
-                    printf("Failed to get effector actor prim.\n");
+                    printf("Failed to get effector actor prim at path: %s\n", combinedPath.c_str());
                     continue;
                 }
 
