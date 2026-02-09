@@ -14,7 +14,7 @@ authors = ["AeroSim"]
 
 [dependencies]
 "omni.usd" = {}
-# "cesium.omniverse"={}  # Disabled for Kit 107.3.0 (requires rebuild for Python 3.11)
+"cesium.omniverse"={}
 
 # Define the Python modules that this extension provides.
 # C++ only extensions need this just so tests don't fail.

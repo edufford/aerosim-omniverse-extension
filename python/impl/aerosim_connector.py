@@ -19,7 +19,7 @@ import omni.kit.commands
 
 import omni.kit.viewport.utility as viewport_utility
 
-# import cesium.omniverse as cesium
+import cesium.omniverse as cesium
 from .._aerosim_connector_bindings import *
 from pxr import Gf, Sdf, Usd, UsdGeom
 
@@ -83,7 +83,7 @@ class AerosimConnector(omni.ext.IExt):
             _aerosim_connector.print_stage_info()
             print("[AerosimCesiumExtension] Starting Cesium Extension...")
             # Ensure Cesium extension is enabled
-            # self.enable_cesium_extension()
+            self.enable_cesium_extension()
 
         elif event.type == int(omni.usd.StageEventType.CLOSED):
             _aerosim_connector.on_default_usd_stage_changed(0)
@@ -103,21 +103,21 @@ class AerosimConnector(omni.ext.IExt):
             print("[AerosimCesiumExtension] ERROR: No USD stage found!")
             return
 
-        # cesium_token = os.environ.get("AEROSIM_CESIUM_TOKEN")
-        # if cesium_token:
-        #     print("[AerosimCesiumExtension] Cesium token found")
-        #     cesium.add_tileset_ion("Cesium World Terrain", 2275207, cesium_token)
-        #     self.load_coordinates(33.93651939935984, -118.41269814369221, 0.0)
-        # else:
-        #     print("[AerosimCesiumExtension] ERROR: Cesium Token not found!")
+        cesium_token = os.environ.get("AEROSIM_CESIUM_TOKEN")
+        if cesium_token:
+            print("[AerosimCesiumExtension] Cesium token found")
+            cesium.add_tileset_ion("Cesium World Terrain", 2275207, cesium_token)
+            self.load_coordinates(33.93651939935984, -118.41269814369221, 0.0)
+        else:
+            print("[AerosimCesiumExtension] ERROR: Cesium Token not found!")
 
     def load_coordinates(self, lat, lon, alt):
         """Load coordinates into the Cesium Georeference."""
         print(f"[AerosimCesiumExtension] Loading coordinates: {lat}, {lon}, {alt}")
-        # CesiumGeoreference = cesium.get_or_create_cesium_georeference()
-        # CesiumGeoreference.GetPrim().GetAttribute("cesium:georeferenceOrigin:latitude").Set(lat)
-        # CesiumGeoreference.GetPrim().GetAttribute("cesium:georeferenceOrigin:longitude").Set(lon)
-        # CesiumGeoreference.GetPrim().GetAttribute("cesium:georeferenceOrigin:height").Set(alt)
+        CesiumGeoreference = cesium.get_or_create_cesium_georeference()
+        CesiumGeoreference.GetPrim().GetAttribute("cesium:georeferenceOrigin:latitude").Set(lat)
+        CesiumGeoreference.GetPrim().GetAttribute("cesium:georeferenceOrigin:longitude").Set(lon)
+        CesiumGeoreference.GetPrim().GetAttribute("cesium:georeferenceOrigin:height").Set(alt)
         print("[AerosimCesiumExtension] Coordinates loaded successfully!")
 
     def update_viewport_camera(self):
