@@ -931,8 +931,9 @@ protected:
                     }
 
                     VtValue value;
-                    connectedAttr.Get(&value);
-                    attr.Set(value);
+                    if (connectedAttr.Get(&value) && !value.IsEmpty()) {
+                        attr.Set(value);
+                    }
                 }
             }
         }
