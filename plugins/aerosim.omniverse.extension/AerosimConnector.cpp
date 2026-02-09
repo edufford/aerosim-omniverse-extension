@@ -832,7 +832,7 @@ protected:
         }
 
         initialize_logger("logs/aerosim_connector.log");
-	    bool bIsMessageHandlerInitialized = initialize_message_handler("0");
+	    bool bIsMessageHandlerInitialized = initialize_message_handler("0", "zenoh");
 
 	    if (bIsMessageHandlerInitialized)
 	    {

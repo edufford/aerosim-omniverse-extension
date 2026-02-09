@@ -14,13 +14,20 @@ repo_build.prebuild_link {
 project_ext_plugin(ext, "aerosim.omniverse.extension.plugin")
     add_files("include", "include/aerosim/omniverse/extension")
     add_files("source", "plugins/aerosim.omniverse.extension")
+
+    -- Use Kit's USD helper for proper linking
+    extra_usd_libs = {
+        "usdGeom",
+        "usdUtils"
+    }
+    add_usd(extra_usd_libs)
+
     includedirs {
         "include",
         "plugins/aerosim.omniverse.extension",
-        "%{target_deps}/nv_usd/release/include",
     }
-    libdirs { "%{target_deps}/nv_usd/release/lib"}
-    links { "arch", "gf", "sdf", "tf", "usd", "usdGeom", "usdUtils", "aerosim_world_link" }
+    libdirs { "%{target_deps}/usd/release/lib" }
+    links { "aerosim_world_link" }
     defines { "NOMINMAX", "NDEBUG" }
     runtime "Release"
     rtti "On"
@@ -29,9 +36,8 @@ project_ext_plugin(ext, "aerosim.omniverse.extension.plugin")
         exceptionhandling "On"
         staticruntime "Off"
         cppdialect "C++17"
-        includedirs { "%{target_deps}/python/include/python3.10" }
-        buildoptions { "-D_GLIBCXX_USE_CXX11_ABI=0 -Wno-deprecated-declarations -Wno-deprecated -Wno-unused-variable -pthread -lstdc++fs -Wno-undef" }
-        linkoptions { "-Wl,--disable-new-dtags -Wl,-rpath,%{target_deps}/nv_usd/release/lib:%{target_deps}/python/lib:" }
+        buildoptions { "-pthread -lstdc++fs -Wno-error" }
+        linkoptions { "-Wl,--disable-new-dtags -Wl,-rpath,%{target_deps}/usd/release/lib:%{target_deps}/python/lib:" }
     filter { "system:windows" }
         buildoptions { "/wd4244 /wd4305 /EHsc" }
     filter {}
