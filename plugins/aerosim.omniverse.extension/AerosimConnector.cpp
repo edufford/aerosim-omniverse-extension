@@ -98,6 +98,14 @@ protected:
                 PXR_NS::UsdPrim prim = m_stage->GetPrimAtPath(primPath);
                 if (!prim.IsValid()) {
                     prim = m_stage->DefinePrim(primPath);
+
+                    // Pre-create viewport_config attributes so Fabric doesn't
+                    // warn about missing properties before the scene graph is initialized.
+                    if (resource_name == "viewport_config") {
+                        prim.CreateAttribute(TfToken("disable_viewport_config"), SdfValueTypeNames->Bool);
+                        prim.CreateAttribute(TfToken("active_camera"), SdfValueTypeNames->String);
+                        prim.CreateAttribute(TfToken("active_camera_path"), SdfValueTypeNames->String);
+                    }
                 }
 
                 if (resource_name == "origin") {
@@ -132,11 +140,11 @@ protected:
 
                     UsdAttribute enabledAttr = prim.CreateAttribute(TfToken("disable_viewport_config"), SdfValueTypeNames->Bool);
                     UsdAttribute activeCameraAttr = prim.CreateAttribute(TfToken("active_camera"), SdfValueTypeNames->String);
-                    UsdRelationship activeCameraRef = prim.CreateRelationship(TfToken("active_camera_ref"));
+                    UsdAttribute activeCameraPathAttr = prim.CreateAttribute(TfToken("active_camera_path"), SdfValueTypeNames->String);
 
                     activeCameraAttr.Set(viewport_config.active_camera);
                     if (viewport_config.active_camera == "None" || viewport_config.active_camera == "") {
-                        activeCameraRef.ClearTargets(true);
+                        activeCameraPathAttr.Set(std::string(""));
                         break;
                     }
 
@@ -145,7 +153,7 @@ protected:
                     if (!m_stage->GetPrimAtPath(cameraEntityPath)) {
                         printf("WARNING: Couldn't get viewport_config.active_camera entity '%s'.\n", cameraEntityPath.GetText());
                         activeCameraAttr.Set("None");
-                        activeCameraRef.ClearTargets(true);
+                        activeCameraPathAttr.Set(std::string(""));
                         break;
                     }
 
@@ -154,7 +162,7 @@ protected:
                     if (!actorRel) {
                         printf("WARNING: Couldn't get actor relationship for viewport_config.active_camera entity '%s'.\n", cameraEntityPath.GetText());
                         activeCameraAttr.Set("None");
-                        activeCameraRef.ClearTargets(true);
+                        activeCameraPathAttr.Set(std::string(""));
                         break;
                     }
 
@@ -163,7 +171,7 @@ protected:
                     if (actor_references.size() == 0) {
                         printf("WARNING: Couldn't get actor references for viewport_config.active_camera entity '%s'.\n", cameraEntityPath.GetText());
                         activeCameraAttr.Set("None");
-                        activeCameraRef.ClearTargets(true);
+                        activeCameraPathAttr.Set(std::string(""));
                         break;
                     }
 
@@ -172,7 +180,7 @@ protected:
                     if (!actorPrim) {
                         printf("WARNING: Couldn't get prim for viewport_config.active_camera entity '%s'.\n", cameraEntityPath.GetText());
                         activeCameraAttr.Set("None");
-                        activeCameraRef.ClearTargets(true);
+                        activeCameraPathAttr.Set(std::string(""));
                         break;
                     }
 
@@ -188,13 +196,12 @@ protected:
                     if (!cameraPrim) {
                         printf("WARNING: Couldn't find a valid camera prim for viewport_config.active_camera entity '%s'.\n", cameraEntityPath.GetText());
                         activeCameraAttr.Set("None");
-                        activeCameraRef.ClearTargets(true);
+                        activeCameraPathAttr.Set(std::string(""));
                         break;
                     }
 
-                    // Set the found camera prim as the active camera reference.
-                    PXR_NS::SdfPathVector targets = { cameraPrim.GetPath() };
-                    activeCameraRef.SetTargets(targets);
+                    // Set the found camera prim path as the active camera.
+                    activeCameraPathAttr.Set(cameraPrim.GetPath().GetString());
                 }
             }
         }
@@ -459,15 +466,17 @@ protected:
                     prim = m_stage->DefinePrim(primPath);
                 }
 
-                UsdRelationship componentRel = prim.CreateRelationship(TfToken("components"));
+                UsdAttribute componentsAttr = prim.CreateAttribute(TfToken("components"), SdfValueTypeNames->StringArray);
 
+                VtArray<std::string> componentPaths;
                 for (const auto& comp : component_list) {
                     std::string component_name = comp.get<std::string>();
                     PXR_NS::SdfPath componentPrimPath("/Components");
 
                     componentPrimPath = componentPrimPath.AppendChild(TfToken(component_name)).AppendChild(TfToken(entity_id));
-                    componentRel.AddTarget(componentPrimPath);
+                    componentPaths.push_back(componentPrimPath.GetString());
                 }
+                componentsAttr.Set(componentPaths);
             }
         }
     }
@@ -603,7 +612,7 @@ protected:
 
                 auto effectorActorPrim = m_stage->GetPrimAtPath(effectorActorPath);
                 if (!effectorActorPrim) {
-                    printf("Failed to get effector actor prim.\n");
+                    printf("Failed to get effector actor prim at path: %s\n", combinedPath.c_str());
                     continue;
                 }
 
@@ -765,7 +774,7 @@ protected:
 
             PXR_NS::UsdPrim effectorsPrim = m_stage->GetPrimAtPath(effectorsPath);
             if (!effectorsPrim) {
-                printf("Failed to get effectors prim.\n");
+                printf("Skipping effector attribute connections for actor '%s': no effectors component found.\n", actorPath.GetText());
                 continue;
             }
 
@@ -785,7 +794,7 @@ protected:
 
                 auto effectorActorPrim = m_stage->GetPrimAtPath(effectorActorPath);
                 if (!effectorActorPrim) {
-                    printf("Failed to get effector actor prim.\n");
+                    printf("Failed to get effector actor prim at path: %s\n", combinedPath.c_str());
                     continue;
                 }
 
@@ -931,8 +940,9 @@ protected:
                     }
 
                     VtValue value;
-                    connectedAttr.Get(&value);
-                    attr.Set(value);
+                    if (connectedAttr.Get(&value) && !value.IsEmpty()) {
+                        attr.Set(value);
+                    }
                 }
             }
         }

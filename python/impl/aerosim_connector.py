@@ -135,18 +135,17 @@ class AerosimConnector(omni.ext.IExt):
         if not (prim and prim.IsValid()):
             return
 
-        active_camera_rel = prim.GetRelationship("active_camera_ref")
-        if not active_camera_rel:
+        active_camera_path_attr = prim.GetAttribute("active_camera_path")
+        if not active_camera_path_attr:
             return
 
-        # Retrieve the list of target paths.
-        active_camera_targets = active_camera_rel.GetTargets()
-        if not active_camera_targets or len(active_camera_targets) == 0:
+        active_camera_path = active_camera_path_attr.Get()
+        if not active_camera_path:
             return
 
         disable_viewport_config = prim.GetAttribute("disable_viewport_config").Get()
         if disable_viewport_config:
             return
 
-        # Use the first target path as the active camera.
-        viewport.camera_path = str(active_camera_targets[0])
+        # Set the active camera from the stored prim path.
+        viewport.camera_path = active_camera_path
