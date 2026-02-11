@@ -48,6 +48,18 @@ public:
      * @param stageId The id of the new default USD stage.
      */
     virtual void onDefaultUsdStageChanged(long stageId) = 0;
+
+    /**
+     * Check if an orchestrator stop command has been received.
+     *
+     * @return true if a stop command was received and not yet cleared.
+     */
+    virtual bool isStopCommandReceived() = 0;
+
+    /**
+     * Clear the stop command received flag after handling it.
+     */
+    virtual void clearStopCommandReceived() = 0;
 };
 
 }

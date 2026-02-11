@@ -948,6 +948,16 @@ protected:
         }
     }
 
+    bool isStopCommandReceived() override
+    {
+        return m_stopCommandReceived;
+    }
+
+    void clearStopCommandReceived() override
+    {
+        m_stopCommandReceived = false;
+    }
+
     void onUpdateEvent() override
     {
         // It is important that all USD stage reads/writes happen from the main thread:
@@ -981,8 +991,30 @@ protected:
             }
             catch (json::parse_error& e) {
                 printf("Failed to parse scene_graph.json file: %s\n", e.what());
+                std::free(sceneGraphData);
                 return;
             }
+
+            // Check if this is a stop command from the orchestrator
+            if (sceneGraphJson.contains("command") && sceneGraphJson["command"] == "stop") {
+                printf("[AerosimConnector] Received orchestrator stop command. Cleaning up...\n");
+
+                // End the current message handler
+                end_message_handler();
+
+                // Reset scene graph state so the next connection triggers full initialization
+                m_sceneGraphInitialized = false;
+                m_usd_actor_prims.clear();
+
+                // Set flag for Python to detect and reload the stage
+                m_stopCommandReceived = true;
+
+                printf("[AerosimConnector] Cleanup complete. Waiting for stage reload.\n");
+
+                std::free(sceneGraphData);
+                return;
+            }
+
             processSceneGraphJson(sceneGraphJson);
 
             if (!m_sceneGraphInitialized)
@@ -1033,6 +1065,7 @@ private:
     carb::events::ISubscriptionPtr m_updateEventsSubscription;
 
     bool m_sceneGraphInitialized = false;
+    bool m_stopCommandReceived = false;
 
     std::unordered_map<std::string, PXR_NS::UsdPrim> m_usd_actor_prims;
 };

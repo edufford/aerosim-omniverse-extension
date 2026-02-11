@@ -32,6 +32,8 @@ PYBIND11_MODULE(_aerosim_connector_bindings, m)
         .def("print_stage_info", &IAerosimConnector::printStageInfo)
         .def("on_default_usd_stage_changed", &IAerosimConnector::onDefaultUsdStageChanged)
         .def("on_update_event", &IAerosimConnector::onUpdateEvent)
+        .def("is_stop_command_received", &IAerosimConnector::isStopCommandReceived)
+        .def("clear_stop_command_received", &IAerosimConnector::clearStopCommandReceived)
     /**/;
 }
 }

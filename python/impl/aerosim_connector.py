@@ -61,6 +61,16 @@ class AerosimConnector(omni.ext.IExt):
 
     def _update(self, event):
         _aerosim_connector.on_update_event()
+
+        # Check if a stop command was received from the orchestrator
+        if _aerosim_connector.is_stop_command_received():
+            print("[AerosimConnector] Stop command received. Reloading default stage...")
+            _aerosim_connector.clear_stop_command_received()
+            # Create a new empty stage, which triggers _on_stage_event(OPENED)
+            # to fully reinitialize the message handler and Cesium extension
+            omni.usd.get_context().new_stage()
+            return
+
         self.update_viewport_camera()
 
     def on_shutdown(self):
