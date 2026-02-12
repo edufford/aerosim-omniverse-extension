@@ -38,6 +38,10 @@ class AerosimConnector(omni.ext.IExt):
         # Disable gamepad camera control to prevent conflict with pilot control input
         carb.settings.get_settings().set("persistent/app/omniverse/gamepadCameraControl", False)
 
+        # Flag to load the default stage asset on the first OPENED event
+        # (replacing Kit's empty stage with the aerosim default environment)
+        self._needs_default_stage = True
+
         # Acquire the example USD interface.
         global _aerosim_connector
         _aerosim_connector = acquire_aerosim_connector()
@@ -66,12 +70,24 @@ class AerosimConnector(omni.ext.IExt):
         if _aerosim_connector.is_stop_command_received():
             print("[AerosimConnector] Stop command received. Reloading default stage...")
             _aerosim_connector.clear_stop_command_received()
-            # Create a new empty stage, which triggers _on_stage_event(OPENED)
-            # to fully reinitialize the message handler and Cesium extension
-            omni.usd.get_context().new_stage()
+            # Load default_stage.usdc directly; the resulting OPENED event
+            # will reinitialize the message handler and Cesium terrain
+            self._load_default_stage()
             return
 
         self.update_viewport_camera()
+
+    def _load_default_stage(self):
+        """Load the default_stage.usdc asset from aerosim-assets."""
+        assets_root = os.environ.get("AEROSIM_ASSETS_ROOT", "")
+        default_stage_path = os.path.join(assets_root, "environment", "default_stage.usdc")
+        if os.path.exists(default_stage_path):
+            print(f"[AerosimConnector] Loading default stage: {default_stage_path}")
+            result = omni.usd.get_context().open_stage(default_stage_path)
+            if not result:
+                print(f"[AerosimConnector] ERROR: Failed to open default stage: {default_stage_path}")
+        else:
+            print(f"[AerosimConnector] WARNING: Default stage not found at {default_stage_path}")
 
     def on_shutdown(self):
         global _aerosim_connector
@@ -88,6 +104,15 @@ class AerosimConnector(omni.ext.IExt):
 
     def _on_stage_event(self, event):
         if event.type == int(omni.usd.StageEventType.OPENED):
+            # On the first OPENED event (Kit's empty stage or after stop command),
+            # replace it with the default_stage.usdc asset and return.
+            # The open_stage() call will trigger another OPENED event where
+            # normal initialization proceeds.
+            if self._needs_default_stage:
+                self._needs_default_stage = False
+                self._load_default_stage()
+                return
+
             _aerosim_connector.on_default_usd_stage_changed(omni.usd.get_context().get_stage_id())
             _aerosim_connector.initialize_scene_graph()
             _aerosim_connector.print_stage_info()
