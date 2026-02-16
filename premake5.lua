@@ -8,6 +8,16 @@ repo_build.prebuild_link {
     { "docs", ext.target_dir.."/docs" },
 }
 
+-- Read the aerosim_world_link library path (shared by C++ plugin and Python bindings)
+local aerosim_world_link_lib_path = nil
+local file = io.open("aerosim_world_link_lib_path.txt", "r")
+if file then
+    aerosim_world_link_lib_path = file:read("*line")
+    file:close()
+else
+    error("Could not read aerosim_world_link_lib_path.txt. Please run build.sh script to regenerate it.")
+end
+
 -- Build the C++ plugin that will be loaded by the extension.
 -- The plugin must implement the omni::ext::IExt interface to
 -- be automatically loaded by the extension system at startup.
@@ -42,25 +52,18 @@ project_ext_plugin(ext, "aerosim.omniverse.extension.plugin")
         buildoptions { "/wd4244 /wd4305 /EHsc" }
     filter {}
 
-    -- Add the aerosim_world_link library to the project using a separate file to set its path so it can still be built inside a docker container
-    local file = io.open("aerosim_world_link_lib_path.txt", "r")
-    if file then
-        local aerosim_world_link_lib_path = file:read("*line")
-        file:close()
-        includedirs { aerosim_world_link_lib_path }
-        libdirs { aerosim_world_link_lib_path }
-        filter { "system:windows" }
-            postbuildcommands{
-                "{COPY} " .. aerosim_world_link_lib_path .. "/aerosim_world_link.dll " .. ext.target_dir .. "/bin"
-            }
-        filter { "system:linux" }
-            postbuildcommands{
-                "{COPY} " .. aerosim_world_link_lib_path .. "/libaerosim_world_link.so " .. ext.target_dir .. "/bin"
-            }
-        filter {}
-    else
-        error("Could not read aerosim_world_link_lib_path.txt. Please run build.bat/sh script to regenerate it.")
-    end
+    -- Link aerosim_world_link library
+    includedirs { aerosim_world_link_lib_path }
+    libdirs { aerosim_world_link_lib_path }
+    filter { "system:windows" }
+        postbuildcommands{
+            "{COPY} " .. aerosim_world_link_lib_path .. "/aerosim_world_link.dll " .. ext.target_dir .. "/bin"
+        }
+    filter { "system:linux" }
+        postbuildcommands{
+            "{COPY} " .. aerosim_world_link_lib_path .. "/libaerosim_world_link.so " .. ext.target_dir .. "/bin"
+        }
+    filter {}
 
 -- Build Python bindings that will be loaded by the extension.
 project_ext_bindings {
@@ -71,6 +74,12 @@ project_ext_bindings {
     target_subdir = "aerosim/omniverse/extension"
 }
     includedirs { "include" }
+
+    -- Link aerosim_world_link for publish_image_to_topic() Python binding
+    includedirs { aerosim_world_link_lib_path }
+    libdirs { aerosim_world_link_lib_path }
+    links { "aerosim_world_link" }
+
     repo_build.prebuild_link {
         { "python/impl", ext.target_dir.."/aerosim/omniverse/extension/impl" },
         { "python/tests", ext.target_dir.."/aerosim/omniverse/extension/tests" },

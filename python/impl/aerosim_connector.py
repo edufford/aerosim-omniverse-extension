@@ -23,6 +23,8 @@ import cesium.omniverse as cesium
 from .._aerosim_connector_bindings import *
 from pxr import Gf, Sdf, Usd, UsdGeom
 
+from .camera_sensor_manager import CameraSensorManager
+
 # Global public interface object.
 _aerosim_connector = None
 
@@ -45,6 +47,14 @@ class AerosimConnector(omni.ext.IExt):
         # Acquire the example USD interface.
         global _aerosim_connector
         _aerosim_connector = acquire_aerosim_connector()
+
+        # Initialize the camera sensor manager
+        self._camera_sensor_manager = CameraSensorManager()
+        try:
+            self._camera_sensor_manager.set_publish_function(publish_image_to_topic)
+        except NameError:
+            carb.log_warn("[AerosimConnector] publish_image_to_topic not available. Camera capture disabled.")
+        self._cameras_discovered = False
 
         # Inform the C++ plugin if a USD stage is already open.
         usd_context = omni.usd.get_context()
@@ -69,6 +79,8 @@ class AerosimConnector(omni.ext.IExt):
         # Check if a stop command was received from the orchestrator
         if _aerosim_connector.is_stop_command_received():
             print("[AerosimConnector] Stop command received. Reloading default stage...")
+            self._camera_sensor_manager.cleanup()
+            self._cameras_discovered = False
             _aerosim_connector.clear_stop_command_received()
             # Load default_stage.usdc directly; the resulting OPENED event
             # will reinitialize the message handler and Cesium terrain
@@ -76,6 +88,22 @@ class AerosimConnector(omni.ext.IExt):
             return
 
         self.update_viewport_camera()
+
+        # Discover and initialize camera sensors after the scene graph is loaded
+        if not self._cameras_discovered:
+            usd_context = omni.usd.get_context()
+            stage = usd_context.get_stage()
+            if stage:
+                sensor_prim = stage.GetPrimAtPath(Sdf.Path("/Components/sensor"))
+                if sensor_prim and sensor_prim.IsValid() and sensor_prim.GetChildren():
+                    self._camera_sensor_manager.discover_cameras(stage)
+                    if self._camera_sensor_manager.has_cameras():
+                        self._camera_sensor_manager.initialize_cameras()
+                    self._cameras_discovered = True
+
+        # Capture and publish camera frames
+        if self._camera_sensor_manager.cameras_initialized:
+            self._camera_sensor_manager.capture_and_publish()
 
     def _load_default_stage(self):
         """Load the default_stage.usdc asset from aerosim-assets."""
@@ -91,6 +119,10 @@ class AerosimConnector(omni.ext.IExt):
 
     def on_shutdown(self):
         global _aerosim_connector
+
+        # Clean up camera sensors
+        self._camera_sensor_manager.cleanup()
+        self._cameras_discovered = False
 
         # Remove the example prims from C++.
         _aerosim_connector.remove_prims()
@@ -159,7 +191,6 @@ class AerosimConnector(omni.ext.IExt):
         usd_context = omni.usd.get_context()
         stage = usd_context.get_stage()
         if not stage:
-            # print("[AerosimCesiumExtension] ERROR: No USD stage found!")
             return
 
         viewport = viewport_utility.get_active_viewport()

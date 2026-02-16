@@ -11,6 +11,10 @@
 
 #include <aerosim/omniverse/extension/IAerosimConnector.h>
 
+extern "C" {
+    #include "aerosim_world_link.h"
+}
+
 CARB_BINDINGS("aerosim.omniverse.extension.python")
 
 DISABLE_PYBIND11_DYNAMIC_CAST(aerosim::connector::IAerosimConnector)
@@ -35,5 +39,31 @@ PYBIND11_MODULE(_aerosim_connector_bindings, m)
         .def("is_stop_command_received", &IAerosimConnector::isStopCommandReceived)
         .def("clear_stop_command_received", &IAerosimConnector::clearStopCommandReceived)
     /**/;
+
+    // Expose publish_image_to_topic for camera sensor image publishing.
+    // Accepts a numpy array (or any Python buffer) and passes the raw data
+    // to the aerosim-world-link C FFI for JPEG compression and middleware publishing.
+    m.def("publish_image_to_topic",
+        [](const std::string& topic, int32_t width, int32_t height,
+           int32_t format, pybind11::buffer data) {
+            pybind11::buffer_info info = data.request();
+            ::publish_image_to_topic(
+                topic.c_str(), width, height, format,
+                info.ptr,
+                static_cast<uintptr_t>(info.size * info.itemsize));
+        },
+        pybind11::arg("topic"),
+        pybind11::arg("width"),
+        pybind11::arg("height"),
+        pybind11::arg("format"),
+        pybind11::arg("data"),
+        "Publish a rendered image to an AeroSim middleware topic.\n"
+        "Args:\n"
+        "    topic: Middleware topic name (e.g. 'aerosim.renderer.responses')\n"
+        "    width: Image width in pixels\n"
+        "    height: Image height in pixels\n"
+        "    format: Image encoding (0=RGB8, 1=RGBA8, 2=BGR8, 3=BGRA8)\n"
+        "    data: Raw pixel data as a numpy array or bytes buffer"
+    );
 }
 }
