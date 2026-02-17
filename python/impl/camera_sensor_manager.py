@@ -86,26 +86,23 @@ class CameraSensorManager:
             if "rgb_camera" not in sensor_type:
                 continue
 
-            # Skip sensors with capture_enabled = false (defaults to true if not set)
-            capture_attr = sensor_prim.GetAttribute("sensor:parameters:capture_enabled")
-            if capture_attr and capture_attr.Get() is False:
-                continue
-
             # Read sensor parameters
-            # Note: The C++ side may write zeros if it can't parse the Rust-serialized
-            # sensor_parameters (enum wrapper + array resolution format mismatch).
-            # Use sensible defaults when values are zero or missing.
             sensor_name = sensor_prim.GetAttribute("sensor:sensor_name").Get() or entity_id
             resolution = sensor_prim.GetAttribute("sensor:parameters:resolution").Get()
             tick_rate = sensor_prim.GetAttribute("sensor:parameters:tick_rate").Get() or 0.0
             fov = sensor_prim.GetAttribute("sensor:parameters:fov").Get() or 0.0
 
-            width = resolution[0] if resolution and resolution[0] > 0 else 1920
-            height = resolution[1] if resolution and resolution[1] > 0 else 1080
-            if tick_rate <= 0:
-                tick_rate = 0.02
-            if fov <= 0:
-                fov = 90.0
+            width = resolution[0] if resolution else 0
+            height = resolution[1] if resolution else 0
+
+            # Check capture_enabled (defaults to false if not set)
+            capture_attr = sensor_prim.GetAttribute("sensor:parameters:capture_enabled")
+            capture_enabled = capture_attr.Get() if capture_attr else None
+            if capture_enabled is None:
+                carb.log_warn(
+                    f"[CameraSensorManager] capture_enabled not set for {sensor_name}, defaulting to disabled"
+                )
+                capture_enabled = False
 
             # Resolve camera prim path via entity -> actor_ref relationship
             entity_prim = stage.GetPrimAtPath(Sdf.Path(f"/Entities/{entity_id}"))
@@ -136,6 +133,33 @@ class CameraSensorManager:
                 # If no UsdGeomCamera child, use the actor path directly
                 camera_prim_path = str(actor_paths[0])
 
+            status = "capture enabled" if capture_enabled else "capture disabled"
+            print(
+                f"[CameraSensorManager] Found camera sensor: {sensor_name} "
+                f"({width}x{height}, FOV={fov}, tick_rate={tick_rate}, {status}) "
+                f"at {camera_prim_path}"
+            )
+
+            if not capture_enabled:
+                continue
+
+            # Validate parameters before setting up for capture
+            if width <= 0 or height <= 0:
+                carb.log_error(
+                    f"[CameraSensorManager] Invalid resolution ({width}x{height}) for {sensor_name}, skipping"
+                )
+                continue
+            if fov <= 0:
+                carb.log_error(
+                    f"[CameraSensorManager] Invalid FOV ({fov}) for {sensor_name}, skipping"
+                )
+                continue
+            if tick_rate <= 0:
+                carb.log_error(
+                    f"[CameraSensorManager] Invalid tick_rate ({tick_rate}) for {sensor_name}, skipping"
+                )
+                continue
+
             self._cameras[entity_id] = CameraSensorInfo(
                 entity_id=entity_id,
                 sensor_name=sensor_name,
@@ -145,14 +169,9 @@ class CameraSensorManager:
                 fov=fov,
                 tick_rate=tick_rate,
             )
-            print(
-                f"[CameraSensorManager] Discovered camera sensor: {sensor_name} "
-                f"({width}x{height}, FOV={fov}, tick_rate={tick_rate}) "
-                f"at {camera_prim_path}"
-            )
 
         if self._cameras:
-            print(f"[CameraSensorManager] Discovered {len(self._cameras)} camera sensor(s)")
+            print(f"[CameraSensorManager] {len(self._cameras)} camera sensor(s) set up for capture")
 
     def initialize_cameras(self):
         """Create render products and RGBA annotators for each discovered sensor.
