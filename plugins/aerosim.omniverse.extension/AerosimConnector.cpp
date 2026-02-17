@@ -367,6 +367,10 @@ protected:
                         auto farClipAttr = prim.CreateAttribute(PXR_NS::TfToken("sensor:parameters:far_clip"), SdfValueTypeNames->Double);
                         farClipAttr.Set(sensor.sensor_parameters.far_clip);
 
+                        // Capture enabled attribute (Bool).
+                        auto captureEnabledAttr = prim.CreateAttribute(PXR_NS::TfToken("sensor:parameters:capture_enabled"), SdfValueTypeNames->Bool);
+                        captureEnabledAttr.Set(sensor.sensor_parameters.capture_enabled);
+
                     } else if (component_name == "effectors") {
                         Effectors effectors = entity_data.get<Effectors>();
                         effectors.owner_entity_id = entity_id;

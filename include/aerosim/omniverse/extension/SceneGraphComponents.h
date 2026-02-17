@@ -131,6 +131,7 @@ struct ActorState : Component {
 struct SensorParams {
     Vector2i resolution;
     double tick_rate = 0, fov = 0, near_clip = 0, far_clip = 0;
+    bool capture_enabled = true;
 
     friend void from_json(const json& j, SensorParams& sp) {
         // Rust serde serializes the SensorParameters enum as {"RGBCamera": {...}}
@@ -147,6 +148,7 @@ struct SensorParams {
         if (p->contains("fov")) p->at("fov").get_to(sp.fov);
         if (p->contains("near_clip")) p->at("near_clip").get_to(sp.near_clip);
         if (p->contains("far_clip")) p->at("far_clip").get_to(sp.far_clip);
+        if (p->contains("capture_enabled")) p->at("capture_enabled").get_to(sp.capture_enabled);
     }
 };
 
