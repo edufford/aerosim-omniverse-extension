@@ -252,6 +252,49 @@ class CameraSensorManager:
                     f"[CameraSensorManager] Capture failed for {cam_info.sensor_name}: {e}"
                 )
 
+    def get_cesium_viewports(self, stage):
+        """Build Cesium Viewport objects for each initialized camera sensor.
+
+        Computes view and projection matrices from each camera's UsdGeom.Camera
+        prim so Cesium can include these frustums in tile selection.
+
+        Returns:
+            List of cesium.omniverse.bindings.Viewport, or empty list on error.
+        """
+        if not self._cameras_initialized:
+            return []
+
+        try:
+            from cesium.omniverse.bindings import Viewport
+        except ImportError:
+            return []
+
+        viewports = []
+        for cam_info in self._cameras.values():
+            if not cam_info.initialized:
+                continue
+
+            camera_prim = stage.GetPrimAtPath(cam_info.camera_prim_path)
+            if not camera_prim or not camera_prim.IsValid():
+                continue
+
+            geom_camera = UsdGeom.Camera(camera_prim)
+            if not geom_camera:
+                continue
+
+            gf_camera = geom_camera.GetCamera(Usd.TimeCode.Default())
+            view_matrix = gf_camera.frustum.ComputeViewMatrix()
+            proj_matrix = gf_camera.frustum.ComputeProjectionMatrix()
+
+            viewport = Viewport()
+            viewport.viewMatrix = view_matrix
+            viewport.projMatrix = proj_matrix
+            viewport.width = float(cam_info.width)
+            viewport.height = float(cam_info.height)
+            viewports.append(viewport)
+
+        return viewports
+
     def cleanup(self):
         """Destroy render products and release resources."""
         # Stop the timeline that was started for render product capture

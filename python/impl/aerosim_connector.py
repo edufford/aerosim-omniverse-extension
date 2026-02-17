@@ -7,13 +7,10 @@
 ## license agreement from NVIDIA CORPORATION is strictly prohibited.
 ##
 import os
-import time
-import threading
 
 import carb
 import omni.ext
 import omni.usd
-import omni.ext
 import omni.kit.app
 import omni.kit.commands
 
@@ -21,7 +18,14 @@ import omni.kit.viewport.utility as viewport_utility
 
 import cesium.omniverse as cesium
 from .._aerosim_connector_bindings import *
-from pxr import Gf, Sdf, Usd, UsdGeom
+from pxr import Sdf
+
+try:
+    from cesium.omniverse.bindings import acquire_cesium_omniverse_interface, Viewport as CesiumViewport
+    from omni.kit.viewport.window import get_viewport_window_instances
+    _cesium_viewports_available = True
+except ImportError:
+    _cesium_viewports_available = False
 
 from .camera_sensor_manager import CameraSensorManager
 
@@ -55,6 +59,14 @@ class AerosimConnector(omni.ext.IExt):
         except NameError:
             carb.log_warn("[AerosimConnector] publish_image_to_topic not available. Camera capture disabled.")
         self._cameras_discovered = False
+
+        # Acquire the Cesium interface for injecting sensor camera viewports
+        self._cesium_interface = None
+        if _cesium_viewports_available:
+            try:
+                self._cesium_interface = acquire_cesium_omniverse_interface()
+            except Exception:
+                carb.log_warn("[AerosimConnector] Could not acquire Cesium interface for viewport injection.")
 
         # Inform the C++ plugin if a USD stage is already open.
         usd_context = omni.usd.get_context()
@@ -105,6 +117,11 @@ class AerosimConnector(omni.ext.IExt):
         if self._camera_sensor_manager.cameras_initialized:
             self._camera_sensor_manager.capture_and_publish()
 
+            # Inject sensor camera frustums into Cesium tile selection so tiles
+            # are loaded for camera sensor views, not just the viewport window.
+            if self._cesium_interface:
+                self._update_cesium_viewports()
+
     def _load_default_stage(self):
         """Load the default_stage.usdc asset from aerosim-assets."""
         assets_root = os.environ.get("AEROSIM_ASSETS_ROOT", "")
@@ -116,6 +133,38 @@ class AerosimConnector(omni.ext.IExt):
                 print(f"[AerosimConnector] ERROR: Failed to open default stage: {default_stage_path}")
         else:
             print(f"[AerosimConnector] WARNING: Default stage not found at {default_stage_path}")
+
+    def _update_cesium_viewports(self):
+        """Re-invoke Cesium tile selection with sensor camera frustums appended.
+
+        Collects the regular viewport windows (same as Cesium's own update),
+        appends Viewport objects for each camera sensor, and calls
+        on_update_frame so Cesium loads tiles visible to all cameras.
+        """
+        stage = omni.usd.get_context().get_stage()
+        if not stage:
+            return
+
+        # Gather regular viewport windows (mirrors Cesium extension logic)
+        viewports = []
+        try:
+            for instance in get_viewport_window_instances():
+                vp_api = instance.viewport_api
+                vp = CesiumViewport()
+                vp.viewMatrix = vp_api.view
+                vp.projMatrix = vp_api.projection
+                vp.width = float(vp_api.resolution[0])
+                vp.height = float(vp_api.resolution[1])
+                viewports.append(vp)
+        except Exception:
+            pass
+
+        # Append sensor camera viewports
+        sensor_viewports = self._camera_sensor_manager.get_cesium_viewports(stage)
+        viewports.extend(sensor_viewports)
+
+        if viewports:
+            self._cesium_interface.on_update_frame(viewports, False)
 
     def on_shutdown(self):
         global _aerosim_connector
