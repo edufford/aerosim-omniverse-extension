@@ -24,10 +24,16 @@ struct ActorProperties : Component {
 
 // Vector Types
 struct Vector2i {
-    int x, y;
+    int x = 0, y = 0;
     friend void from_json(const json& j, Vector2i& v) {
-        if (j.contains("x")) j.at("x").get_to(v.x);
-        if (j.contains("y")) j.at("y").get_to(v.y);
+        if (j.is_array() && j.size() >= 2) {
+            // Rust serde serializes tuples as arrays: [1920, 1080]
+            v.x = j[0].get<int>();
+            v.y = j[1].get<int>();
+        } else {
+            if (j.contains("x")) j.at("x").get_to(v.x);
+            if (j.contains("y")) j.at("y").get_to(v.y);
+        }
     }
 };
 
@@ -124,14 +130,25 @@ struct ActorState : Component {
 
 struct SensorParams {
     Vector2i resolution;
-    double tick_rate, fov, near_clip, far_clip;
+    double tick_rate = 0, fov = 0, near_clip = 0, far_clip = 0;
+    bool capture_enabled = true;
 
     friend void from_json(const json& j, SensorParams& sp) {
-        if (j.contains("resolution")) j.at("resolution").get_to(sp.resolution);
-        if (j.contains("tick_rate")) j.at("tick_rate").get_to(sp.tick_rate);
-        if (j.contains("fov")) j.at("fov").get_to(sp.fov);
-        if (j.contains("near_clip")) j.at("near_clip").get_to(sp.near_clip);
-        if (j.contains("far_clip")) j.at("far_clip").get_to(sp.far_clip);
+        // Rust serde serializes the SensorParameters enum as {"RGBCamera": {...}}
+        // or {"DepthSensor": {...}}. Unwrap the variant to get the actual parameters.
+        const json* p = &j;
+        if (j.contains("RGBCamera")) {
+            p = &j.at("RGBCamera");
+        } else if (j.contains("DepthSensor")) {
+            p = &j.at("DepthSensor");
+        }
+
+        if (p->contains("resolution")) p->at("resolution").get_to(sp.resolution);
+        if (p->contains("tick_rate")) p->at("tick_rate").get_to(sp.tick_rate);
+        if (p->contains("fov")) p->at("fov").get_to(sp.fov);
+        if (p->contains("near_clip")) p->at("near_clip").get_to(sp.near_clip);
+        if (p->contains("far_clip")) p->at("far_clip").get_to(sp.far_clip);
+        if (p->contains("capture_enabled")) p->at("capture_enabled").get_to(sp.capture_enabled);
     }
 };
 
