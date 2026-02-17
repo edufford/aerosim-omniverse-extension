@@ -7,6 +7,7 @@
 ## license agreement from NVIDIA CORPORATION is strictly prohibited.
 ##
 import os
+import asyncio
 
 import carb
 import omni.ext
@@ -60,6 +61,10 @@ class AerosimConnector(omni.ext.IExt):
             carb.log_warn("[AerosimConnector] publish_image_to_topic not available. Camera capture disabled.")
         self._cameras_discovered = False
 
+        # Isaac Sim World instance for simulation context
+        self._world = None
+        self._world_ready = False
+
         # Acquire the Cesium interface for injecting sensor camera viewports
         self._cesium_interface = None
         if _cesium_viewports_available:
@@ -91,8 +96,7 @@ class AerosimConnector(omni.ext.IExt):
         # Check if a stop command was received from the orchestrator
         if _aerosim_connector.is_stop_command_received():
             print("[AerosimConnector] Stop command received. Reloading default stage...")
-            self._camera_sensor_manager.cleanup()
-            self._cameras_discovered = False
+            self._cleanup_world()
             _aerosim_connector.clear_stop_command_received()
             # Load default_stage.usdc directly; the resulting OPENED event
             # will reinitialize the message handler and Cesium terrain
@@ -110,8 +114,12 @@ class AerosimConnector(omni.ext.IExt):
                 if sensor_prim and sensor_prim.IsValid() and sensor_prim.GetChildren():
                     self._camera_sensor_manager.discover_cameras(stage)
                     if self._camera_sensor_manager.has_cameras():
-                        self._camera_sensor_manager.initialize_cameras()
+                        self._initialize_world()
                     self._cameras_discovered = True
+
+        # Step the world for sensor data acquisition
+        if self._world_ready:
+            self._world.step(render=False)
 
         # Capture and publish camera frames
         if self._camera_sensor_manager.cameras_initialized:
@@ -121,6 +129,36 @@ class AerosimConnector(omni.ext.IExt):
             # are loaded for camera sensor views, not just the viewport window.
             if self._cesium_interface:
                 self._update_cesium_viewports()
+
+    def _initialize_world(self):
+        """Create the Isaac Sim World and initialize cameras asynchronously."""
+        from isaacsim.core.api import World
+
+        self._world = World(stage_units_in_meters=1.0)
+        asyncio.ensure_future(self._initialize_world_async())
+
+    async def _initialize_world_async(self):
+        """Async initialization: add cameras to World scene, reset, and mark ready."""
+        await self._world.initialize_simulation_context_async()
+
+        # Add discovered cameras to the World scene
+        self._camera_sensor_manager.initialize_cameras(self._world)
+
+        # Reset triggers scene._finalize() which calls camera.initialize()
+        # to create render products and attach annotators
+        await self._world.reset_async()
+
+        self._world_ready = True
+        print("[AerosimConnector] World initialized with camera sensors")
+
+    def _cleanup_world(self):
+        """Clean up World instance, cameras, and reset state."""
+        self._camera_sensor_manager.cleanup()
+        self._cameras_discovered = False
+        self._world_ready = False
+        if self._world:
+            self._world.clear_instance()
+            self._world = None
 
     def _load_default_stage(self):
         """Load the default_stage.usdc asset from aerosim-assets."""
@@ -169,9 +207,8 @@ class AerosimConnector(omni.ext.IExt):
     def on_shutdown(self):
         global _aerosim_connector
 
-        # Clean up camera sensors
-        self._camera_sensor_manager.cleanup()
-        self._cameras_discovered = False
+        # Clean up World and camera sensors
+        self._cleanup_world()
 
         # Remove the example prims from C++.
         _aerosim_connector.remove_prims()

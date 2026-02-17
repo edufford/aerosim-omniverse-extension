@@ -1,11 +1,12 @@
 """
-Camera sensor manager using Omniverse Replicator render products and annotators.
+Camera sensor manager using Isaac Sim Camera class and World simulation context.
 
-Discovers camera sensors from the AeroSim scene graph, creates render products
-for each camera prim, captures RGBA frames via annotators, and publishes them
-to the AeroSim middleware pipeline via publish_image_to_topic().
+Discovers camera sensors from the AeroSim scene graph, creates Isaac Sim Camera
+objects added to the World scene, captures RGBA frames via Camera.get_rgba(),
+and publishes them to the AeroSim middleware pipeline via publish_image_to_topic().
 """
 
+import math
 import numpy as np
 import carb
 
@@ -32,14 +33,13 @@ class CameraSensorInfo:
         self.height = height
         self.fov = fov
         self.tick_rate = tick_rate
-        self.render_product = None
-        self.annotator = None
+        self.camera = None  # Isaac Sim Camera instance
         self.initialized = False
         self.frame_count = 0  # Track frames since initialization for warmup
 
 
 class CameraSensorManager:
-    """Manages camera render products for image capture and publishing."""
+    """Manages Isaac Sim Camera sensors for image capture and publishing."""
 
     def __init__(self):
         self._cameras = {}  # entity_id -> CameraSensorInfo
@@ -154,7 +154,7 @@ class CameraSensorManager:
                     f"[CameraSensorManager] Invalid FOV ({fov}) for {sensor_name}, skipping"
                 )
                 continue
-            if tick_rate <= 0:
+            if tick_rate < 0:
                 carb.log_error(
                     f"[CameraSensorManager] Invalid tick_rate ({tick_rate}) for {sensor_name}, skipping"
                 )
@@ -173,70 +173,74 @@ class CameraSensorManager:
         if self._cameras:
             print(f"[CameraSensorManager] {len(self._cameras)} camera sensor(s) set up for capture")
 
-    def initialize_cameras(self):
-        """Create render products and RGBA annotators for each discovered sensor.
+    def initialize_cameras(self, world):
+        """Create Isaac Sim Camera objects and add them to the World scene.
 
-        Uses omni.replicator.core to create render products attached to each
-        camera prim, then attaches an 'rgba' annotator to capture frames.
-        This works in extension contexts without needing world.step().
+        Each Camera is created at the discovered prim path with the configured
+        resolution and frequency. Adding to world.scene registers them so
+        World.reset_async() will call camera.initialize() to set up render
+        products and annotators.
+
+        Args:
+            world: The Isaac Sim World instance.
         """
         if self._cameras_initialized:
             return
 
-        try:
-            import omni.replicator.core as rep
-        except ImportError:
-            carb.log_warn(
-                "[CameraSensorManager] omni.replicator.core not available. "
-                "Camera capture disabled."
-            )
-            return
+        from isaacsim.sensors.camera import Camera
 
         for entity_id, cam_info in self._cameras.items():
             try:
-                # Create a render product for this camera at the desired resolution
-                rp = rep.create.render_product(
-                    cam_info.camera_prim_path,
-                    (cam_info.width, cam_info.height),
+                # Set aperture from configured FOV and resolution aspect ratio
+                # before creating Camera (which validates aperture consistency)
+                # horizontalAperture = 2 * focalLength * tan(hfov/2)
+                # verticalAperture = horizontalAperture / aspectRatio
+                if cam_info.fov > 0:
+                    stage = world.stage
+                    prim = stage.GetPrimAtPath(cam_info.camera_prim_path)
+                    if prim and prim.IsValid():
+                        geom_camera = UsdGeom.Camera(prim)
+                        focal_length = geom_camera.GetFocalLengthAttr().Get()
+                        hfov_rad = math.radians(cam_info.fov)
+                        h_aperture = 2.0 * focal_length * math.tan(hfov_rad / 2.0)
+                        aspect_ratio = cam_info.width / cam_info.height
+                        v_aperture = h_aperture / aspect_ratio
+                        geom_camera.GetHorizontalApertureAttr().Set(h_aperture)
+                        geom_camera.GetVerticalApertureAttr().Set(v_aperture)
+
+                # TODO: Apply tick_rate throttling based on AeroSim's simulation clock
+                # For now, Camera captures every rendered frame
+                camera = Camera(
+                    prim_path=cam_info.camera_prim_path,
+                    name=cam_info.sensor_name,
+                    resolution=(cam_info.width, cam_info.height),
                 )
-
-                # Create and attach an RGBA annotator
-                annotator = rep.AnnotatorRegistry.get_annotator("LdrColor")
-                annotator.attach([rp])
-
-                cam_info.render_product = rp
-                cam_info.annotator = annotator
+                world.scene.add(camera)
+                cam_info.camera = camera
                 cam_info.initialized = True
                 cam_info.frame_count = 0
                 print(
-                    f"[CameraSensorManager] Initialized render product for: {cam_info.sensor_name} "
+                    f"[CameraSensorManager] Created Camera for: {cam_info.sensor_name} "
                     f"at {cam_info.camera_prim_path}"
                 )
             except Exception as e:
                 carb.log_error(
-                    f"[CameraSensorManager] Failed to initialize camera {cam_info.sensor_name}: {e}"
+                    f"[CameraSensorManager] Failed to create camera {cam_info.sensor_name}: {e}"
                 )
-
-        # Start the timeline so the OmniGraph pipeline feeds render products.
-        # Without this, annotators return None because their data source is inactive.
-        import omni.timeline
-        timeline = omni.timeline.get_timeline_interface()
-        timeline.play()
-        print("[CameraSensorManager] Timeline started for render product capture")
 
         self._cameras_initialized = True
 
     def capture_and_publish(self):
         """Capture RGBA frames from all initialized cameras and publish them.
 
-        For each camera, reads the annotator data to get a numpy array and
+        For each camera, calls Camera.get_rgba() to get a numpy array and
         publishes it via publish_image_to_topic() to the middleware.
         """
         if not self._cameras_initialized or not self._publish_fn:
             return
 
         for entity_id, cam_info in self._cameras.items():
-            if not cam_info.initialized or cam_info.annotator is None:
+            if not cam_info.initialized or cam_info.camera is None:
                 continue
 
             # Wait a few frames after initialization for the renderer to warm up
@@ -245,18 +249,13 @@ class CameraSensorManager:
                 continue
 
             try:
-                data = cam_info.annotator.get_data()
-                if data is None:
+                rgba = cam_info.camera.get_rgba()
+                if rgba is None:
                     continue
 
-                # LdrColor annotator returns RGBA uint8 data
-                rgba = np.array(data, dtype=np.uint8)
+                rgba = np.asarray(rgba, dtype=np.uint8)
                 if rgba.size == 0:
                     continue
-
-                # Reshape if needed (annotator may return flat or shaped array)
-                if rgba.ndim == 1:
-                    rgba = rgba.reshape(cam_info.height, cam_info.width, 4)
 
                 # Publish RGBA8 image to middleware
                 self._publish_fn(
@@ -315,21 +314,12 @@ class CameraSensorManager:
         return viewports
 
     def cleanup(self):
-        """Destroy render products and release resources."""
-        # Stop the timeline that was started for render product capture
-        try:
-            import omni.timeline
-            timeline = omni.timeline.get_timeline_interface()
-            timeline.stop()
-        except Exception:
-            pass
-
+        """Destroy Camera instances and release resources."""
         for entity_id, cam_info in self._cameras.items():
             try:
-                if cam_info.annotator is not None:
-                    cam_info.annotator.detach()
-                    cam_info.annotator = None
-                cam_info.render_product = None
+                if cam_info.camera is not None:
+                    cam_info.camera.destroy()
+                    cam_info.camera = None
             except Exception:
                 pass
             cam_info.initialized = False

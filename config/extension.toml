@@ -15,8 +15,8 @@ authors = ["AeroSim"]
 [dependencies]
 "omni.usd" = {}
 "cesium.omniverse" = {}
-"isaacsim.sensors.camera" = { optional = true }
-"omni.replicator.core" = { optional = true }
+"isaacsim.core.api" = {}
+"isaacsim.sensors.camera" = {}
 
 # Define the Python modules that this extension provides.
 # C++ only extensions need this just so tests don't fail.
