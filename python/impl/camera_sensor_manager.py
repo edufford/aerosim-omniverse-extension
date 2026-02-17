@@ -24,7 +24,9 @@ RENDERER_RESPONSES_TOPIC = "aerosim.renderer.responses"
 class CameraSensorInfo:
     """Holds configuration and runtime state for a single camera sensor."""
 
-    def __init__(self, entity_id, sensor_name, camera_prim_path, width, height, fov, tick_rate):
+    def __init__(
+        self, entity_id, sensor_name, camera_prim_path, width, height, fov, tick_rate
+    ):
         self.entity_id = entity_id
         self.sensor_name = sensor_name
         self.camera_prim_path = camera_prim_path
@@ -87,9 +89,13 @@ class CameraSensorManager:
                 continue
 
             # Read sensor parameters
-            sensor_name = sensor_prim.GetAttribute("sensor:sensor_name").Get() or entity_id
+            sensor_name = (
+                sensor_prim.GetAttribute("sensor:sensor_name").Get() or entity_id
+            )
             resolution = sensor_prim.GetAttribute("sensor:parameters:resolution").Get()
-            tick_rate = sensor_prim.GetAttribute("sensor:parameters:tick_rate").Get() or 0.0
+            tick_rate = (
+                sensor_prim.GetAttribute("sensor:parameters:tick_rate").Get() or 0.0
+            )
             fov = sensor_prim.GetAttribute("sensor:parameters:fov").Get() or 0.0
 
             width = resolution[0] if resolution else 0
@@ -107,17 +113,23 @@ class CameraSensorManager:
             # Resolve camera prim path via entity -> actor_ref relationship
             entity_prim = stage.GetPrimAtPath(Sdf.Path(f"/Entities/{entity_id}"))
             if not entity_prim or not entity_prim.IsValid():
-                carb.log_warn(f"[CameraSensorManager] Entity prim not found: /Entities/{entity_id}")
+                carb.log_warn(
+                    f"[CameraSensorManager] Entity prim not found: /Entities/{entity_id}"
+                )
                 continue
 
             actor_rel = entity_prim.GetRelationship("actor_ref")
             if not actor_rel:
-                carb.log_warn(f"[CameraSensorManager] No actor_ref for entity {entity_id}")
+                carb.log_warn(
+                    f"[CameraSensorManager] No actor_ref for entity {entity_id}"
+                )
                 continue
 
             actor_paths = actor_rel.GetForwardedTargets()
             if not actor_paths:
-                carb.log_warn(f"[CameraSensorManager] No actor targets for entity {entity_id}")
+                carb.log_warn(
+                    f"[CameraSensorManager] No actor targets for entity {entity_id}"
+                )
                 continue
 
             # Find the UsdGeomCamera child in the actor hierarchy
@@ -171,7 +183,9 @@ class CameraSensorManager:
             )
 
         if self._cameras:
-            print(f"[CameraSensorManager] {len(self._cameras)} camera sensor(s) set up for capture")
+            print(
+                f"[CameraSensorManager] {len(self._cameras)} camera sensor(s) set up for capture"
+            )
 
     def initialize_cameras(self):
         """Create render products and RGBA annotators for each discovered sensor.
@@ -220,9 +234,14 @@ class CameraSensorManager:
         # Start the timeline so the OmniGraph pipeline feeds render products.
         # Without this, annotators return None because their data source is inactive.
         import omni.timeline
+
         timeline = omni.timeline.get_timeline_interface()
         timeline.play()
         print("[CameraSensorManager] Timeline started for render product capture")
+
+        # Enable capture-on-play so the Replicator orchestrator triggers
+        # annotator capture each frame while the timeline is playing.
+        carb.settings.get_settings().set("/omni/replicator/captureOnPlay", True)
 
         self._cameras_initialized = True
 
@@ -249,8 +268,12 @@ class CameraSensorManager:
                 if data is None:
                     continue
 
-                # LdrColor annotator returns RGBA uint8 data
-                rgba = np.array(data, dtype=np.uint8)
+                # LdrColor annotator returns RGBA uint8 numpy array
+                rgba = (
+                    data
+                    if isinstance(data, np.ndarray)
+                    else np.array(data, dtype=np.uint8)
+                )
                 if rgba.size == 0:
                     continue
 
@@ -319,6 +342,7 @@ class CameraSensorManager:
         # Stop the timeline that was started for render product capture
         try:
             import omni.timeline
+
             timeline = omni.timeline.get_timeline_interface()
             timeline.stop()
         except Exception:
