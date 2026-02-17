@@ -213,11 +213,7 @@ class CameraSensorManager:
         For each camera, reads the annotator data to get a numpy array and
         publishes it via publish_image_to_topic() to the middleware.
         """
-        if not self._cameras_initialized:
-            print(f"[CameraSensorManager] capture_and_publish: not initialized (cameras_initialized={self._cameras_initialized}, cameras={len(self._cameras)})")
-            return
-        if not self._publish_fn:
-            print("[CameraSensorManager] WARNING: publish function not set, skipping capture")
+        if not self._cameras_initialized or not self._publish_fn:
             return
 
         for entity_id, cam_info in self._cameras.items():
@@ -232,8 +228,6 @@ class CameraSensorManager:
             try:
                 data = cam_info.annotator.get_data()
                 if data is None:
-                    if cam_info.frame_count % 100 == 0:
-                        print(f"[CameraSensorManager] {cam_info.sensor_name}: annotator returned None (frame {cam_info.frame_count})")
                     continue
 
                 # LdrColor annotator returns RGBA uint8 data
@@ -244,9 +238,6 @@ class CameraSensorManager:
                 # Reshape if needed (annotator may return flat or shaped array)
                 if rgba.ndim == 1:
                     rgba = rgba.reshape(cam_info.height, cam_info.width, 4)
-
-                if cam_info.frame_count <= 15 or cam_info.frame_count % 100 == 0:
-                    print(f"[CameraSensorManager] {cam_info.sensor_name}: captured {rgba.shape}, publishing to {RENDERER_RESPONSES_TOPIC}")
 
                 # Publish RGBA8 image to middleware
                 self._publish_fn(
