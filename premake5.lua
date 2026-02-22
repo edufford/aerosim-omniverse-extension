@@ -8,7 +8,12 @@ repo_build.prebuild_link {
     { "docs", ext.target_dir.."/docs" },
 }
 
--- Read the aerosim_world_link library path (shared by C++ plugin and Python bindings)
+-- Read the aerosim-world-link library path written by build.sh / build.bat.
+-- The build scripts copy the lib files into the extension's aerosim-world-link-lib/
+-- subdirectory so they are accessible when Kit builds inside a Docker container
+-- (docker build option), where the original AEROSIM_WORLD_LINK_LIB host path may
+-- not be mounted. The path is used below for includedirs, libdirs, and post-build
+-- copy commands.
 local aerosim_world_link_lib_path = nil
 local file = io.open("aerosim_world_link_lib_path.txt", "r")
 if file then
