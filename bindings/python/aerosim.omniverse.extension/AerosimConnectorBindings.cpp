@@ -40,14 +40,14 @@ PYBIND11_MODULE(_aerosim_connector_bindings, m)
         .def("clear_stop_command_received", &IAerosimConnector::clearStopCommandReceived)
     /**/;
 
-    // Expose publish_image_to_topic for camera sensor image publishing.
+    // Expose publish_image_to_topic_async for camera sensor image publishing.
     // Accepts a numpy array (or any Python buffer) and passes the raw data
     // to the aerosim-world-link C FFI for JPEG compression and middleware publishing.
     m.def("publish_image_to_topic",
         [](const std::string& topic, int32_t width, int32_t height,
            int32_t format, pybind11::buffer data) {
             pybind11::buffer_info info = data.request();
-            ::publish_image_to_topic(
+            ::publish_image_to_topic_async(
                 topic.c_str(), width, height, format,
                 info.ptr,
                 static_cast<uintptr_t>(info.size * info.itemsize));
