@@ -266,17 +266,30 @@ protected:
                         double roll;
                         double pitch;
                         double yaw;
-                        aerosim_quat_wxyz_to_rpy(actorState.pose.transform.orientation.w,
-                                                 actorState.pose.transform.orientation.x,
-                                                 actorState.pose.transform.orientation.y,
-                                                 actorState.pose.transform.orientation.z,
-                                                 &roll, &pitch, &yaw);
+
+                        // Input quaternion from scene graph (NED/FRD frame)
+                        double qw = actorState.pose.transform.orientation.w;
+                        double qx = actorState.pose.transform.orientation.x;
+                        double qy = actorState.pose.transform.orientation.y;
+                        double qz = actorState.pose.transform.orientation.z;
+
+                        // Decompose to RPY using Intrinsic ZYX
+                        aerosim_quat_wxyz_to_rpy(qw, qx, qy, qz, &roll, &pitch, &yaw);
+
+                        // Convert FRD body frame to FLU body frame
                         rpy_frd_to_flu(&roll, &pitch, &yaw);
+
                         if (parent.size() == 0) {
                             // For global poses, rotate FLU (NWU) to Cesium's ENU
                             rpy_nwu_to_enu(&roll, &pitch, &yaw);
                         }
-                        // Convert RPY to quaternion using Omniverse order
+
+                        // Convert RPY to quaternion using aerospace Intrinsic ZYX
+                        // (Tait-Bryan) convention: yaw about Z first, then pitch about
+                        // new Y, then roll about newest X.
+                        // USD uses row-vector convention where r1 * r2 applies r1 first
+                        // (left-to-right). Intrinsic ZYX = Extrinsic XYZ, so composition
+                        // order is X * Y * Z.
                         auto rotation_x = GfRotation(GfVec3d::XAxis(), to_degrees(roll));
                         auto rotation_y = GfRotation(GfVec3d::YAxis(), to_degrees(pitch));
                         auto rotation_z = GfRotation(GfVec3d::ZAxis(), to_degrees(yaw));
